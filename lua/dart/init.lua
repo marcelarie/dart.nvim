@@ -354,6 +354,30 @@ M.write_session = function(session)
   M.write_json(path, M.state)
 end
 
+-- Auto-session integration helpers
+M.read_auto_session = function()
+  -- Use cwd-based session name (matches auto-session's default behavior)
+  local session_name = M.get_session_name_from_cwd()
+  if session_name then
+    M.read_session(session_name)
+  end
+end
+
+M.write_auto_session = function()
+  -- Use cwd-based session name (matches auto-session's default behavior)
+  local session_name = M.get_session_name_from_cwd()
+  if session_name then
+    M.write_session(session_name)
+  end
+end
+
+M.get_session_name_from_cwd = function()
+  -- Create session name from current working directory
+  -- This matches auto-session's default naming convention
+  local cwd = vim.fn.getcwd()
+  return cwd:gsub('/', '__'):gsub('^__', '')
+end
+
 M.get_state_by_field = function(field, value)
   for _, m in ipairs(M.state) do
     if m[field] == value then
@@ -690,6 +714,8 @@ Dart.mark = M.mark
 Dart.unmark = M.unmark
 Dart.read_session = M.read_session
 Dart.write_session = M.write_session
+Dart.read_auto_session = M.read_auto_session
+Dart.write_auto_session = M.write_auto_session
 Dart.state_from_mark = M.state_from_mark
 Dart.state_from_filename = M.state_from_filename
 Dart.should_show = M.should_show
