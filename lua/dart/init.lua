@@ -443,13 +443,19 @@ M.shift_buflist = function(filename)
     end
   end
 
-  -- if buflist is empty, add first file
-  local bufnr = M.get_bufnr(filename)
   if #items == 0 then
-    return M.mark(bufnr, buflist[1])
+    table.insert(M.state, {
+      mark = buflist[1],
+      filename = vim.fn.fnamemodify(filename, ':p'),
+    })
+    local order = M.config.tabline.order(M.config)
+    table.sort(M.state, function(a, b)
+      return (order[a.mark] or 999) < (order[b.mark] or 999)
+    end)
+    M.emit_change()
+    return
   end
 
-  -- if not empty, iterate from the end and shift right
   for i = #items, 1, -1 do
     local path = items[i].filename
     if not (i + 1 > #buflist) then
@@ -459,8 +465,16 @@ M.shift_buflist = function(filename)
     end
   end
 
-  -- finally, update the leftmost item file
-  M.mark(bufnr, buflist[1])
+  table.insert(M.state, {
+    mark = buflist[1],
+    filename = vim.fn.fnamemodify(filename, ':p'),
+  })
+  
+  local order = M.config.tabline.order(M.config)
+  table.sort(M.state, function(a, b)
+    return (order[a.mark] or 999) < (order[b.mark] or 999)
+  end)
+  
   M.emit_change()
 end
 
@@ -638,37 +652,54 @@ M.mark = function(bufnr, mark)
   if not bufnr then
     bufnr = vim.api.nvim_get_current_buf()
   end
-  if not mark then
-    mark = M.next_unused_mark()
-    if not mark then
-      return M.mark(bufnr, '+')
-    end
-  end
-
+  
   local filename = vim.api.nvim_buf_get_name(bufnr)
   if not M.should_show(filename) then
     return
   end
 
-  -- If mark already exists, update it to new file
-  local mark_exists = M.state_from_mark(mark)
-  if mark_exists then
-    mark_exists.filename = filename
-    return
-  end
-
   local file_exists = M.state_from_filename(filename)
-  if not file_exists then
-    table.insert(M.state, {
-      mark = mark,
-      filename = vim.fn.fnamemodify(filename, ':p'),
-    })
-  elseif vim.tbl_contains(M.config.buflist, file_exists.mark) then
-    file_exists.mark = mark -- allow for re-marking buffers in the buflist
+  
+  if not mark then
+    if file_exists then
+      if vim.tbl_contains(M.config.buflist, file_exists.mark) then
+        mark = M.next_unused_mark()
+        if not mark then
+          mark = '+'
+        end
+        file_exists.mark = mark
+      else
+        -- File is already marked, unmark it and move to buflist
+        M.del_by_filename(filename)
+        M.shift_buflist(filename)
+        return
+      end
+    else
+      mark = M.next_unused_mark()
+      if not mark then
+        mark = '+'
+      end
+      table.insert(M.state, {
+        mark = mark,
+        filename = vim.fn.fnamemodify(filename, ':p'),
+      })
+    end
   else
-    -- if a marked buffer is marked again, instead un-mark it and move it to the buflist
-    M.del_by_filename(filename)
-    M.shift_buflist(filename)
+    local mark_exists = M.state_from_mark(mark)
+    if mark_exists then
+      mark_exists.filename = filename
+      M.emit_change()
+      return
+    end
+    
+    if file_exists then
+      file_exists.mark = mark
+    else
+      table.insert(M.state, {
+        mark = mark,
+        filename = vim.fn.fnamemodify(filename, ':p'),
+      })
+    end
   end
 
   local order = M.config.tabline.order(M.config)
