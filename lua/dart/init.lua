@@ -40,6 +40,16 @@ M.config = {
     -- to override the label highlights entirely.
     label_fg = 'orange',
 
+    -- Override tab background colors
+    current_bg = nil, -- Background color for current tab
+    visible_bg = nil, -- Background color for visible tabs
+    modified_bg = nil, -- Background color for modified tabs
+
+    -- Override tab foreground colors (optional, used with background colors)
+    current_fg = nil, -- Foreground color for current tab
+    visible_fg = nil, -- Foreground color for visible tabs
+    modified_fg = nil, -- Foreground color for modified tabs
+
     -- Display icons in the tabline
     -- Supported icon providers are mini.icons and nvim-web-devicons
     icons = true,
@@ -141,6 +151,32 @@ M.init_tabline = function()
   vim.opt.tabline = '%!v:lua.Dart.gen_tabline()'
 end
 
+M.get_contrasting_fg = function(bg_color)
+  if not bg_color or bg_color == '' then
+    return nil
+  end
+
+  if bg_color:match('^#%x+$') then
+    local hex = bg_color:gsub('#', '')
+    if #hex == 3 then
+      hex = hex:gsub('(.)', '%1%1')
+    end
+    
+    local r = tonumber(hex:sub(1, 2), 16)
+    local g = tonumber(hex:sub(3, 4), 16)
+    local b = tonumber(hex:sub(5, 6), 16)
+    
+    if r and g and b then
+      local avg = (r + g + b) / 3
+      -- If average component is less than 128 (half of 255), use white text
+      return avg < 128 and '#ffffff' or '#000000'
+    end
+  end
+
+  -- Fallback for non-hex colors or parsing errors
+  return '#ffffff'
+end
+
 M.create_autocommands = function()
   local group = vim.api.nvim_create_augroup('Dart', {})
 
@@ -178,6 +214,12 @@ M.create_autocommands = function()
     })
   end
 
+  -- reapply highlights when colorscheme changes
+  vim.api.nvim_create_autocmd('ColorScheme', {
+    group = group,
+    callback = M.create_default_hl,
+  })
+
   -- Clickable tabs
   vim.api.nvim_exec2(
     [[function! SwitchBuffer(buf_id, clicks, button, mod)
@@ -204,14 +246,39 @@ M.create_default_hl = function()
     return fallback
   end
 
-  local override_label = function(hl, link)
-    local prev = vim.api.nvim_get_hl(0, { name = link })
+  local override_label = function(hl, tab_hl)
+    -- Get the background from the corresponding tab highlight that we just set
+    local tab_colors = vim.api.nvim_get_hl(0, { name = tab_hl })
     vim.api.nvim_set_hl(0, hl, {
-      bg = prev.bg or '',
+      bg = tab_colors.bg,
       fg = M.config.tabline.label_fg,
       bold = true,
       default = true,
     })
+  end
+
+  local override_bg = function(hl, link, bg_config, fg_config)
+    if bg_config then
+      local prev = vim.api.nvim_get_hl(0, { name = link })
+      local hl_opts = {
+        bg = bg_config,
+        bold = prev.bold,
+        italic = prev.italic,
+        underline = prev.underline,
+      }
+      
+      -- Prioritize user-specified fg_config, then contrasting color, then original fg
+      if fg_config then
+        hl_opts.fg = fg_config
+      else
+        -- Always calculate contrasting color when only background is set
+        hl_opts.fg = M.get_contrasting_fg(bg_config) or prev.fg
+      end
+      
+      vim.api.nvim_set_hl(0, hl, hl_opts)
+    else
+      set_default_hl(hl, { link = link })
+    end
   end
 
   local current = mk_fallback_hl('MiniTablineCurrent', 'TabLineSel')
@@ -221,26 +288,35 @@ M.create_default_hl = function()
   local fill = mk_fallback_hl('MiniTablineFill', 'Normal')
 
   -- Current selection
-  set_default_hl('DartCurrent', { link = current })
-  override_label('DartCurrentLabel', current)
+  override_bg('DartCurrent', current, M.config.tabline.current_bg, M.config.tabline.current_fg)
+  override_label('DartCurrentLabel', 'DartCurrent')
 
   -- Current selection if modified
-  set_default_hl('DartCurrentModified', { link = current_modified })
-  override_label('DartCurrentLabelModified', current_modified)
+  override_bg('DartCurrentModified', current_modified, 
+    M.config.tabline.modified_bg or M.config.tabline.current_bg,
+    M.config.tabline.modified_fg or M.config.tabline.current_fg)
+  override_label('DartCurrentLabelModified', 'DartCurrentModified')
 
   -- Visible but not selected
-  set_default_hl('DartVisible', { link = visible })
-  override_label('DartVisibleLabel', visible)
+  override_bg('DartVisible', visible, M.config.tabline.visible_bg, M.config.tabline.visible_fg)
+  override_label('DartVisibleLabel', 'DartVisible')
 
   -- Visible and modified but not selected
-  set_default_hl('DartVisibleModified', { link = visible_modified })
-  override_label('DartVisibleLabelModified', visible_modified)
+  override_bg('DartVisibleModified', visible_modified, 
+    M.config.tabline.modified_bg or M.config.tabline.visible_bg,
+    M.config.tabline.modified_fg or M.config.tabline.visible_fg)
+  override_label('DartVisibleLabelModified', 'DartVisibleModified')
 
   -- Fill
   set_default_hl('DartFill', { link = fill })
 
-  -- Pick
-  override_label('DartPickLabel', 'Normal')
+  -- Pick (completely separate from tab highlights to avoid inheritance)
+  local normal_hl = vim.api.nvim_get_hl(0, { name = 'Normal' })
+  set_default_hl('DartPickLabel', {
+    bg = 'NONE',  -- Transparent background
+    fg = normal_hl.fg,  -- Use normal text color, not tabline label color
+    bold = true,
+  })
 end
 
 M.write_json = function(path, tbl)
