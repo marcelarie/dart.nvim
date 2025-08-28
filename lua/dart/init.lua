@@ -161,11 +161,11 @@ M.get_contrasting_fg = function(bg_color)
     if #hex == 3 then
       hex = hex:gsub('(.)', '%1%1')
     end
-    
+
     local r = tonumber(hex:sub(1, 2), 16)
     local g = tonumber(hex:sub(3, 4), 16)
     local b = tonumber(hex:sub(5, 6), 16)
-    
+
     if r and g and b then
       local avg = (r + g + b) / 3
       -- If average component is less than 128 (half of 255), use white text
@@ -266,7 +266,7 @@ M.create_default_hl = function()
         italic = prev.italic,
         underline = prev.underline,
       }
-      
+
       -- Prioritize user-specified fg_config, then contrasting color, then original fg
       if fg_config then
         hl_opts.fg = fg_config
@@ -274,7 +274,7 @@ M.create_default_hl = function()
         -- Always calculate contrasting color when only background is set
         hl_opts.fg = M.get_contrasting_fg(bg_config) or prev.fg
       end
-      
+
       vim.api.nvim_set_hl(0, hl, hl_opts)
     else
       set_default_hl(hl, { link = link })
@@ -292,9 +292,12 @@ M.create_default_hl = function()
   override_label('DartCurrentLabel', 'DartCurrent')
 
   -- Current selection if modified
-  override_bg('DartCurrentModified', current_modified, 
+  override_bg(
+    'DartCurrentModified',
+    current_modified,
     M.config.tabline.modified_bg or M.config.tabline.current_bg,
-    M.config.tabline.modified_fg or M.config.tabline.current_fg)
+    M.config.tabline.modified_fg or M.config.tabline.current_fg
+  )
   override_label('DartCurrentLabelModified', 'DartCurrentModified')
 
   -- Visible but not selected
@@ -302,9 +305,12 @@ M.create_default_hl = function()
   override_label('DartVisibleLabel', 'DartVisible')
 
   -- Visible and modified but not selected
-  override_bg('DartVisibleModified', visible_modified, 
+  override_bg(
+    'DartVisibleModified',
+    visible_modified,
     M.config.tabline.modified_bg or M.config.tabline.visible_bg,
-    M.config.tabline.modified_fg or M.config.tabline.visible_fg)
+    M.config.tabline.modified_fg or M.config.tabline.visible_fg
+  )
   override_label('DartVisibleLabelModified', 'DartVisibleModified')
 
   -- Fill
@@ -313,8 +319,8 @@ M.create_default_hl = function()
   -- Pick (completely separate from tab highlights to avoid inheritance)
   local normal_hl = vim.api.nvim_get_hl(0, { name = 'Normal' })
   set_default_hl('DartPickLabel', {
-    bg = 'NONE',  -- Transparent background
-    fg = normal_hl.fg,  -- Use normal text color, not tabline label color
+    bg = 'NONE', -- Transparent background
+    fg = normal_hl.fg, -- Use normal text color, not tabline label color
     bold = true,
   })
 end
@@ -469,12 +475,12 @@ M.shift_buflist = function(filename)
     mark = buflist[1],
     filename = vim.fn.fnamemodify(filename, ':p'),
   })
-  
+
   local order = M.config.tabline.order(M.config)
   table.sort(M.state, function(a, b)
     return (order[a.mark] or 999) < (order[b.mark] or 999)
   end)
-  
+
   M.emit_change()
 end
 
@@ -652,14 +658,14 @@ M.mark = function(bufnr, mark)
   if not bufnr then
     bufnr = vim.api.nvim_get_current_buf()
   end
-  
+
   local filename = vim.api.nvim_buf_get_name(bufnr)
   if not M.should_show(filename) then
     return
   end
 
   local file_exists = M.state_from_filename(filename)
-  
+
   if not mark then
     if file_exists then
       if vim.tbl_contains(M.config.buflist, file_exists.mark) then
@@ -672,6 +678,7 @@ M.mark = function(bufnr, mark)
         -- File is already marked, unmark it and move to buflist
         M.del_by_filename(filename)
         M.shift_buflist(filename)
+        M.emit_change()
         return
       end
     else
@@ -691,7 +698,7 @@ M.mark = function(bufnr, mark)
       M.emit_change()
       return
     end
-    
+
     if file_exists then
       file_exists.mark = mark
     else
